@@ -29,7 +29,7 @@ function ProgressBar({ step }) {
         const isCurrent = s === step || (step === 'discovering' && s === 'drilldown') || (step === 'generating' && s === 'people')
         return (
           <div key={s} className="flex items-center gap-1.5">
-            <div className={`h-1.5 w-8 rounded-full transition-colors duration-300 ${isActive ? 'bg-blue-600' : 'bg-gray-200'}`} />
+            <div className={`h-1.5 w-8 rounded-full transition-colors duration-300 ${isActive ? 'bg-orange-600' : 'bg-gray-200'}`} />
             {i < visibleSteps.length - 1 && <div className="h-px w-2 bg-gray-200" />}
           </div>
         )
@@ -52,7 +52,7 @@ function DiscoveringLoader({ state, city }) {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[320px] gap-6">
-      <div className="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
       <div className="text-center space-y-2">
         <p className="text-sm font-medium text-gray-900">Discovering targets in {scope}...</p>
         <div className="space-y-1.5 text-xs text-gray-500">
@@ -65,7 +65,7 @@ function DiscoveringLoader({ state, city }) {
             Finding district administrators
           </p>
           <p className={`transition-opacity duration-500 flex items-center justify-center gap-2 ${phase >= 2 ? 'opacity-100' : 'opacity-30'}`}>
-            {phase >= 2 ? <span className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin inline-block" /> : '·'}
+            {phase >= 2 ? <span className="w-3 h-3 border border-orange-500 border-t-transparent rounded-full animate-spin inline-block" /> : '·'}
             Identifying key decision-makers
           </p>
         </div>
@@ -77,7 +77,7 @@ function DiscoveringLoader({ state, city }) {
 function GeneratingLoader({ person }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[280px] gap-4">
-      <div className="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
       <div className="text-center">
         <p className="text-sm font-medium text-gray-900">Crafting outreach for {person.name}</p>
         <p className="text-xs text-gray-500 mt-1">{person.district}</p>
@@ -163,7 +163,7 @@ export default function App() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
           <button onClick={handleReset} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center flex-shrink-0">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M8 2L14 5.5V10.5L8 14L2 10.5V5.5L8 2Z" fill="white" fillOpacity="0.9"/>
               </svg>
@@ -180,7 +180,7 @@ export default function App() {
               href="https://flintk12.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-orange-600 hover:text-orange-700 font-medium"
             >
               flintk12.com ↗
             </a>

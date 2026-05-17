@@ -6,7 +6,7 @@ function ConferenceCard({ conf }) {
       <p className="text-sm font-semibold text-gray-900 leading-snug">{conf.name}</p>
       <div className="flex items-center gap-2 mt-1 flex-wrap">
         {conf.date_range && (
-          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+          <span className="text-[10px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-medium">
             {conf.date_range}
           </span>
         )}
@@ -18,7 +18,7 @@ function ConferenceCard({ conf }) {
         <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{conf.description}</p>
       )}
       {conf.relevance && (
-        <p className="text-xs text-blue-600 mt-1.5 leading-relaxed">↗ {conf.relevance}</p>
+        <p className="text-xs text-orange-600 mt-1.5 leading-relaxed">↗ {conf.relevance}</p>
       )}
     </div>
   )
@@ -85,7 +85,7 @@ export default function DiscoveryPanel({ state, city, result, onSelectPerson, ge
           </div>
         )}
         {generatingFor && (
-          <div className="mt-4 text-xs text-blue-600 text-center animate-pulse">
+          <div className="mt-4 text-xs text-orange-600 text-center animate-pulse">
             Generating outreach for {generatingFor}...
           </div>
         )}

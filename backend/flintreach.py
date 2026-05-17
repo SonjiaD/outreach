@@ -298,7 +298,26 @@ def _generate_demo_activity(profile: dict) -> dict:
     prompt = f"""District context: {json.dumps(slim)}
 
 Return JSON with exactly this key:
-{{"demo_activity": {{"title": "activity title", "grade_level": "grade level", "subject": "subject area", "context": "1 sentence why this grade/subject fits this district", "teacher_setup_prompt": "2-3 sentence prompt a teacher enters into Flint", "student_interaction": [{{"speaker": "Student", "text": "..."}}, {{"speaker": "Flint", "text": "scaffolds, asks guiding question"}}, {{"speaker": "Student", "text": "..."}}, {{"speaker": "Flint", "text": "deepens learning"}}, {{"speaker": "Student", "text": "..."}}, {{"speaker": "Flint", "text": "affirms, extends thinking"}}], "teacher_dashboard_insight": "what teacher sees in Flint dashboard after session"}}}}"""
+{{"demo_activity": {{
+  "title": "activity title",
+  "grade_level": "grade level e.g. Grade 7",
+  "subject": "subject area",
+  "context": "1 sentence why this grade/subject fits this district",
+  "teacher_setup_prompt": "1-2 sentence prompt the teacher types into Flint to create the activity — specific to subject and grade",
+  "sparky_reply": "Sparky's 2-3 sentence response confirming the activity was created — describes what was built and how students will interact with it",
+  "student_interaction": [
+    {{"speaker": "Student", "text": "realistic student opening message — uncertain, exploring"}},
+    {{"speaker": "Flint", "text": "Flint scaffolds with a guiding question, never gives the answer directly"}},
+    {{"speaker": "Student", "text": "student shows partial understanding, tries to reason through it"}},
+    {{"speaker": "Flint", "text": "Flint deepens the thinking with a follow-up prompt"}},
+    {{"speaker": "Student", "text": "student makes a breakthrough or demonstrates improved understanding"}},
+    {{"speaker": "Flint", "text": "Flint affirms progress, extends thinking to the next concept"}}
+  ],
+  "teacher_dashboard_insight": "1 sentence summarizing overall session quality",
+  "strengths": "2-3 sentences on specific things the student demonstrated well during the session",
+  "areas_for_improvement": "2-3 sentences on where the student struggled or needs more practice",
+  "follow_up_suggestion": "1 sentence: a specific follow-up activity the teacher should assign next"
+}}}}"""
 
     t0 = time.time()
     response = _gemini_call(
@@ -307,7 +326,7 @@ Return JSON with exactly this key:
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=_DEMO_SYSTEM,
-                max_output_tokens=3072,
+                max_output_tokens=4096,
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             )
         ),

@@ -6,7 +6,7 @@ export default function DrilldownPanel({ state, onDiscover, loading }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-sm mx-auto">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-2 h-2 bg-blue-600 rounded-full" />
+        <div className="w-2 h-2 bg-orange-600 rounded-full" />
         <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Selected</span>
       </div>
       <h2 className="text-lg font-semibold text-gray-900 mb-1">{state}</h2>
@@ -23,14 +23,14 @@ export default function DrilldownPanel({ state, onDiscover, loading }) {
           onChange={(e) => setCity(e.target.value)}
           placeholder="e.g. Chicago, Springfield..."
           disabled={loading}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
         />
       </div>
 
       <button
         onClick={() => onDiscover(city.trim() || null)}
         disabled={loading}
-        className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        className="w-full bg-orange-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-orange-700 active:bg-orange-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
       >
         {loading ? (
           <>

@@ -10,7 +10,7 @@ export default function PersonCard({ person, onSelect, loading }) {
   const aiColor = AI_POLICY_COLORS[person.ai_policy_status] || AI_POLICY_COLORS.unknown
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all flex flex-col gap-3">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:border-orange-300 hover:shadow-sm transition-all flex flex-col gap-3">
       <div>
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -54,7 +54,7 @@ export default function PersonCard({ person, onSelect, loading }) {
       <button
         onClick={() => onSelect(person)}
         disabled={loading}
-        className="w-full mt-auto bg-blue-600 text-white rounded-lg py-2 text-xs font-medium hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="w-full mt-auto bg-orange-600 text-white rounded-lg py-2 text-xs font-medium hover:bg-orange-700 active:bg-orange-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         Generate Outreach →
       </button>

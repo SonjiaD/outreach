@@ -29,7 +29,7 @@ export default function USMap({ selectedState, onSelect }) {
                   onClick={() => onSelect(name)}
                   style={{
                     default: {
-                      fill: isSelected ? '#2563EB' : isHovered ? '#BFDBFE' : '#E5E7EB',
+                      fill: isSelected ? '#EA580C' : isHovered ? '#FED7AA' : '#E5E7EB',
                       stroke: '#fff',
                       strokeWidth: 0.75,
                       outline: 'none',
@@ -37,14 +37,14 @@ export default function USMap({ selectedState, onSelect }) {
                       transition: 'fill 0.15s ease',
                     },
                     hover: {
-                      fill: isSelected ? '#1D4ED8' : '#93C5FD',
+                      fill: isSelected ? '#C2410C' : '#FDBA74',
                       stroke: '#fff',
                       strokeWidth: 0.75,
                       outline: 'none',
                       cursor: 'pointer',
                     },
                     pressed: {
-                      fill: '#1D4ED8',
+                      fill: '#C2410C',
                       stroke: '#fff',
                       strokeWidth: 0.75,
                       outline: 'none',
@@ -57,9 +57,9 @@ export default function USMap({ selectedState, onSelect }) {
         </Geographies>
       </ComposableMap>
 
-      {hovered && !selectedState && (
-        <p className="text-center text-xs text-gray-500 -mt-2">{hovered}</p>
-      )}
+      <p className="text-center text-xs text-gray-400 h-4 -mt-1">
+        {hovered && !selectedState ? hovered : ''}
+      </p>
     </div>
   )
 }

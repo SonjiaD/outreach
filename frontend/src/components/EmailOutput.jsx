@@ -80,15 +80,15 @@ export default function EmailOutput({ result, person, onBack }) {
 
       {/* Demo link */}
       {demoUrl && (
-        <div className="bg-white rounded-xl border border-blue-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-blue-100 bg-blue-50 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-orange-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-orange-100 bg-orange-50 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-600 rounded flex items-center justify-center">
+              <div className="w-4 h-4 bg-orange-500 rounded flex items-center justify-center">
                 <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
                   <path d="M4 1L7 2.75V5.25L4 7L1 5.25V2.75L4 1Z" fill="white" fillOpacity="0.9"/>
                 </svg>
               </div>
-              <span className="text-xs font-semibold text-blue-800">Personalized Demo Link</span>
+              <span className="text-xs font-semibold text-orange-800">Personalized Demo Link</span>
             </div>
             <CopyButton text={demoUrl} label="Copy link" />
           </div>
@@ -107,7 +107,7 @@ export default function EmailOutput({ result, person, onBack }) {
               href={demoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="inline-flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 font-medium"
             >
               Preview demo page ↗
             </a>
