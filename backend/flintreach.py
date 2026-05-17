@@ -15,6 +15,20 @@ RESEARCH_MODEL = "gemini-2.5-flash"
 GENERATE_MODEL = "gemini-2.5-flash"
 
 # Hardcoded lookup — no API call needed, removes these fields from the research prompt entirely
+STATE_NAME_TO_ABBR = {
+    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA",
+    "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE", "Florida": "FL", "Georgia": "GA",
+    "Hawaii": "HI", "Idaho": "ID", "Illinois": "IL", "Indiana": "IN", "Iowa": "IA",
+    "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
+    "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
+    "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV", "New Hampshire": "NH",
+    "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY", "North Carolina": "NC",
+    "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA",
+    "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD", "Tennessee": "TN",
+    "Texas": "TX", "Utah": "UT", "Vermont": "VT", "Virginia": "VA", "Washington": "WA",
+    "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY", "District of Columbia": "DC",
+}
+
 STATE_PRIVACY_LAWS = {
     "AL": ("Alabama Student Data Privacy Act", "protects student PII from commercial use"),
     "AZ": ("Arizona Student Data Privacy Act", "restricts commercial use of student information"),
@@ -310,4 +324,233 @@ def generate_outreach_package(profile: dict, contact_name: str, contact_title: s
 
     result = {**email, **one_pager, **demo}
     log(f"  Package complete — subject: \"{result.get('email_subject', '?')}\"")
+    return result
+
+# ---------------------------------------------------------------------------
+# Hardcoded seed conferences by region — always shown even if search is sparse
+# ---------------------------------------------------------------------------
+
+_SEED_CONFERENCES = {
+    "national": [
+        {"name": "ISTE Conference & Expo", "date_range": "June 2026", "location": "San Antonio, TX", "description": "Largest K-12 edtech conference in the US, 10,000+ attendees", "relevance": "Prime venue for demoing Flint to curriculum directors and tech leads"},
+        {"name": "AASA National Conference on Education", "date_range": "February 2026", "location": "Nashville, TN", "description": "Annual gathering of 5,000+ superintendents and district leaders", "relevance": "Direct access to decision-makers who control district purchasing"},
+        {"name": "SXSW EDU", "date_range": "March 2026", "location": "Austin, TX", "description": "Education innovation track at SXSW, attracts forward-thinking administrators", "relevance": "Ideal for districts with supportive AI policy stance"},
+    ],
+    "northeast": ["CT", "ME", "MA", "NH", "NJ", "NY", "PA", "RI", "VT", "DE", "MD"],
+    "southeast": ["AL", "AR", "FL", "GA", "KY", "LA", "MS", "NC", "SC", "TN", "VA", "WV"],
+    "midwest": ["IL", "IN", "IA", "KS", "MI", "MN", "MO", "NE", "ND", "OH", "SD", "WI"],
+    "southwest": ["AZ", "NM", "OK", "TX"],
+    "west": ["AK", "CA", "CO", "HI", "ID", "MT", "NV", "OR", "UT", "WA", "WY"],
+}
+
+_REGIONAL_CONFERENCES = {
+    "northeast": {"name": "NYSCATE Annual Conference", "date_range": "November 2025", "location": "Rochester, NY", "description": "Northeast education technology leaders conference", "relevance": "Strong overlap with NY/NJ district administrators"},
+    "southeast": {"name": "FETC — Future of Education Technology Conference", "date_range": "January 2026", "location": "Orlando, FL", "description": "Southeast-focused edtech conference, 4,000+ attendees", "relevance": "High concentration of Title I district leaders from FL, GA, NC"},
+    "midwest": {"name": "METC — Midwest Education Technology Community", "date_range": "February 2026", "location": "St. Louis, MO", "description": "Regional edtech conference for midwest administrators", "relevance": "Strong Illinois/Missouri district superintendent presence"},
+    "southwest": {"name": "TCEA Annual Convention", "date_range": "February 2026", "location": "Austin, TX", "description": "Texas Computer Education Association — 10,000+ attendees", "relevance": "Largest state edtech conference; Texas has 1,000+ districts"},
+    "west": {"name": "CUE Annual Conference", "date_range": "March 2026", "location": "Palm Springs, CA", "description": "California-focused edtech conference for K-12 educators and admins", "relevance": "Deep reach into CA/WA/OR district leadership"},
+}
+
+def _get_region(state_abbr: str) -> str:
+    for region, states in _SEED_CONFERENCES.items():
+        if isinstance(states, list) and state_abbr.upper() in states:
+            return region
+    return "national"
+
+def _discover_people(scope: str) -> list:
+    """Single focused call: find real administrators at large K-12 districts."""
+    log(f"  [People] Searching for administrators in {scope}...")
+    prompt = f"""You are a JSON API. Respond with ONLY a JSON array. No prose, no markdown, no explanation.
+First character must be [ and last character must be ].
+
+Find the current superintendents, chief academic officers, and curriculum/technology directors at the 8 largest public K-12 school districts in {scope}.
+Use Google Search to verify current names and titles. Include districts of varying sizes — large urban and mid-size suburban.
+
+Return a JSON array where every element has exactly these fields:
+[
+  {{
+    "name": "full name of current administrator",
+    "title": "their exact current title",
+    "district": "full official district name",
+    "city": "city where district HQ is located",
+    "state_abbreviation": "2-letter state code",
+    "enrollment": integer total student count or null,
+    "title_one": true or false,
+    "ell_percentage": "X%" or null,
+    "ai_policy_status": "ban" or "cautious" or "neutral" or "supportive" or "unknown",
+    "why_target": "one sentence: specific reason an AI tutoring platform fits this district"
+  }}
+]
+
+IMPORTANT: Return ONLY the JSON array. Start your response with [ and end with ].
+"""
+    t0 = time.time()
+    response = _gemini_call(
+        lambda: client.models.generate_content(
+            model=RESEARCH_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                max_output_tokens=4096,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            )
+        ),
+        label="people"
+    )
+    elapsed = time.time() - t0
+    text = get_response_text(response)
+    log(f"  [People] Responded in {elapsed:.1f}s — preview: {text[:80]!r}")
+
+    # Try to extract JSON array
+    text = text.strip()
+    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
+    text = text.strip()
+    try:
+        result = json.loads(text)
+        if isinstance(result, list):
+            log(f"  [People] Found {len(result)} people")
+            return result
+        if isinstance(result, dict) and "people" in result:
+            return result["people"]
+    except json.JSONDecodeError:
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if match:
+            try:
+                result = json.loads(match.group())
+                if isinstance(result, list):
+                    log(f"  [People] Extracted {len(result)} people from response")
+                    return result
+            except json.JSONDecodeError:
+                pass
+    log(f"  [People] Parse failed — no valid JSON array found")
+    return []
+
+def _discover_conferences(scope: str) -> list:
+    """Single focused call: find real upcoming K-12 education conferences."""
+    log(f"  [Conferences] Searching for conferences in {scope}...")
+    prompt = f"""You are a JSON API. Respond with ONLY a JSON array. No prose, no markdown, no explanation.
+First character must be [ and last character must be ].
+
+Find 3-4 real upcoming K-12 education or school administrator conferences happening in or near {scope} in 2025 or 2026.
+Include state-level administrator associations and regional edtech events.
+
+Return a JSON array where every element has exactly these fields:
+[
+  {{
+    "name": "official conference name",
+    "date_range": "Month Year (e.g. October 2025)",
+    "location": "City, State",
+    "description": "one sentence describing the conference",
+    "relevance": "one sentence: why an AI tutoring startup should exhibit here"
+  }}
+]
+
+IMPORTANT: Return ONLY the JSON array. Start with [ and end with ].
+"""
+    t0 = time.time()
+    response = _gemini_call(
+        lambda: client.models.generate_content(
+            model=RESEARCH_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            )
+        ),
+        label="conferences"
+    )
+    elapsed = time.time() - t0
+    text = get_response_text(response)
+    log(f"  [Conferences] Responded in {elapsed:.1f}s — preview: {text[:80]!r}")
+
+    text = text.strip()
+    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
+    text = text.strip()
+    try:
+        result = json.loads(text)
+        if isinstance(result, list):
+            log(f"  [Conferences] Found {len(result)} conferences")
+            return result
+        if isinstance(result, dict) and "conferences" in result:
+            return result["conferences"]
+    except json.JSONDecodeError:
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if match:
+            try:
+                result = json.loads(match.group())
+                if isinstance(result, list):
+                    log(f"  [Conferences] Extracted {len(result)} conferences from response")
+                    return result
+            except json.JSONDecodeError:
+                pass
+    log(f"  [Conferences] Parse failed — will use seed conferences only")
+    return []
+
+# ---------------------------------------------------------------------------
+# Discovery: find conferences + administrators for a state/city
+# ---------------------------------------------------------------------------
+
+def discover_targets(state: str, city: str = None) -> dict:
+    scope = f"{city}, {state}" if city else state
+    state_abbr = STATE_NAME_TO_ABBR.get(state, "")
+    log(f"=== Discovery: {scope} ({state_abbr}) ===")
+
+    people = _discover_people(scope)
+    conferences = _discover_conferences(scope)
+
+    # Seed with known conferences so the list is never empty
+    region = _get_region(state_abbr)
+    seed_confs = list(_SEED_CONFERENCES["national"])
+    if region in _REGIONAL_CONFERENCES:
+        seed_confs.insert(0, _REGIONAL_CONFERENCES[region])
+
+    existing_names = {c.get("name", "").lower() for c in conferences}
+    for conf in seed_confs:
+        if conf["name"].lower() not in existing_names:
+            conferences.append(conf)
+
+    result = {"conferences": conferences, "people": people}
+
+    if not people:
+        log(f"  WARNING: No people found for {scope} — showing fallback notice")
+        result["people_fallback"] = True
+
+    log(f"=== Discovery complete: {len(people)} people, {len(conferences)} conferences ===")
+    return result
+
+# ---------------------------------------------------------------------------
+# Generate email + demo for a pre-discovered person (no research call needed)
+# ---------------------------------------------------------------------------
+
+def generate_email_for_person(person: dict) -> dict:
+    log(f"Generate for person — {person.get('name')} at {person.get('district', '?')}")
+
+    state_abbr = person.get("state_abbreviation", "")
+    law_name, law_detail = get_state_privacy_law(state_abbr)
+
+    profile = {
+        "district_name": person.get("district"),
+        "state": person.get("city", "") + (f", {state_abbr}" if state_abbr else ""),
+        "state_abbreviation": state_abbr,
+        "enrollment": person.get("enrollment"),
+        "num_schools": None,
+        "ell_percentage": person.get("ell_percentage"),
+        "title_one_status": person.get("title_one", False),
+        "state_privacy_law": law_name,
+        "state_privacy_law_detail": law_detail,
+        "contact_background": f"{person.get('name')} is the {person.get('title')} of {person.get('district')}.",
+        "district_pain_points": [person.get("why_target", "personalized learning at scale"), "teacher workload"],
+        "best_flint_angle": person.get("why_target", "Flint provides privacy-first AI tutoring that adapts to every student."),
+        "demographics": f"District in {person.get('city', state_abbr)}, serving {person.get('enrollment', 'thousands of')} students",
+        "ai_policy_status": person.get("ai_policy_status", "unknown"),
+    }
+
+    email = _generate_email(profile, person.get("name", ""), person.get("title", ""))
+    demo = _generate_demo_activity(profile)
+
+    result = {**email, "demo_activity": demo}
+    log(f"  Done — subject: \"{result.get('email_subject', '?')}\"")
     return result

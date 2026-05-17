@@ -1,8 +1,9 @@
 import os
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from flintreach import research_district, generate_outreach_package
+from flintreach import research_district, generate_outreach_package, discover_targets, generate_email_for_person
 
 app = FastAPI(title="FlintReach API")
 
@@ -31,6 +32,33 @@ async def generate(body: GenerateRequest):
         if not package:
             raise HTTPException(status_code=500, detail="Generation failed — empty response from model.")
         return {"research": profile, **package}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class DiscoverRequest(BaseModel):
+    state: str
+    city: Optional[str] = None
+
+class PersonRequest(BaseModel):
+    person: dict
+
+@app.post("/discover")
+async def discover(body: DiscoverRequest):
+    try:
+        result = discover_targets(body.state, body.city)
+        if not result:
+            raise HTTPException(status_code=500, detail="Discovery failed — empty response from model.")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate-for-person")
+async def generate_for_person(body: PersonRequest):
+    try:
+        result = generate_email_for_person(body.person)
+        if not result:
+            raise HTTPException(status_code=500, detail="Generation failed — empty response from model.")
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
