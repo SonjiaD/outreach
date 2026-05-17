@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -5,9 +6,13 @@ from flintreach import research_district, generate_outreach_package
 
 app = FastAPI(title="FlintReach API")
 
+# ALLOWED_ORIGINS = comma-separated list, e.g. "https://flintreach.netlify.app,http://localhost:5173"
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
+origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

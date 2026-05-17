@@ -2,6 +2,8 @@ import { useState } from 'react'
 import InputForm from './components/InputForm'
 import OutputPanel from './components/OutputPanel'
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
 export default function App() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -14,7 +16,7 @@ export default function App() {
     setResult(null)
     setCurrentDistrict(district)
     try {
-      const res = await fetch('http://localhost:8000/generate', {
+      const res = await fetch(`${API_URL}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ district, contact_name, contact_title }),
