@@ -4,15 +4,27 @@ import re
 import time
 from datetime import datetime
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-client = genai.Client(api_key=os.environ["GEMINI_API"])
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "").strip()
+USE_OLLAMA = bool(OLLAMA_MODEL)
 
-RESEARCH_MODEL = "gemini-2.5-flash"
-GENERATE_MODEL = "gemini-2.5-flash"
+if USE_OLLAMA:
+    from openai import OpenAI as _OpenAI
+    _ollama_client = _OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+    print(f"[startup] Using Ollama: {OLLAMA_MODEL}")
+else:
+    from google import genai
+    from google.genai import types
+    _api_key = os.environ.get("GEMINI_API", "")
+    if not _api_key:
+        raise ValueError("Set OLLAMA_MODEL or GEMINI_API in .env")
+    print(f"[startup] Using Gemini — key: ...{_api_key[-6:]}")
+    _gemini_client = genai.Client(api_key=_api_key)
+
+RESEARCH_MODEL = "gemini-2.0-flash"
+GENERATE_MODEL = "gemini-2.0-flash"
 
 # Hardcoded lookup — no API call needed, removes these fields from the research prompt entirely
 STATE_NAME_TO_ABBR = {
@@ -78,34 +90,97 @@ def get_state_privacy_law(state_abbr: str) -> tuple:
 def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
-def _gemini_call(fn, label="", max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            return fn()
-        except Exception as e:
-            if 'RESOURCE_EXHAUSTED' in str(e) or '429' in str(e):
-                if attempt < max_retries - 1:
-                    wait = 60
-                    log(f"  Rate limit hit{' on ' + label if label else ''} (attempt {attempt + 1}/{max_retries}). Waiting {wait}s...")
-                    time.sleep(wait)
+def _llm_complete(prompt: str, system: str = None, use_search: bool = False,
+                  label: str = "", max_tokens: int = 4096) -> str:
+    """Unified LLM call — works with Ollama (local) or Gemini."""
+    if USE_OLLAMA:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        for attempt in range(3):
+            try:
+                resp = _ollama_client.chat.completions.create(
+                    model=OLLAMA_MODEL,
+                    messages=messages,
+                    temperature=0,
+                    max_tokens=max_tokens,
+                )
+                return resp.choices[0].message.content
+            except Exception as e:
+                log(f"  Ollama error on {label} (attempt {attempt+1}/3): {e}")
+                if attempt < 2:
+                    time.sleep(2)
                 else:
-                    raise RuntimeError("Gemini free tier rate limit hit. Wait a minute and try again.") from e
-            else:
-                raise
+                    raise
+    else:
+        config_args: dict = {"max_output_tokens": max_tokens}
+        if system:
+            config_args["system_instruction"] = system
+        if use_search:
+            config_args["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+        else:
+            config_args["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        model = RESEARCH_MODEL if use_search else GENERATE_MODEL
+        for attempt in range(3):
+            try:
+                response = _gemini_client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(**config_args),
+                )
+                # Extract text, skipping thinking tokens
+                try:
+                    parts = response.candidates[0].content.parts
+                    text_parts = [p.text for p in parts
+                                  if hasattr(p, 'text') and p.text and not getattr(p, 'thought', False)]
+                    if text_parts:
+                        return '\n'.join(text_parts)
+                except (IndexError, AttributeError):
+                    pass
+                return getattr(response, 'text', '') or ''
+            except Exception as e:
+                err = str(e)
+                log(f"  ERROR on {label} (attempt {attempt+1}/3): {err[:300]}")
+                if 'RESOURCE_EXHAUSTED' in err or '429' in err:
+                    if attempt < 2:
+                        log(f"  Rate limit — waiting 60s...")
+                        time.sleep(60)
+                    else:
+                        raise RuntimeError("Gemini rate limit. Wait a minute and try again.") from e
+                else:
+                    raise
+    return ""
 
-def get_response_text(response) -> str:
-    """Extract final text from a Gemini response, skipping thinking parts."""
+def _extract_json_array(text: str, label: str = "") -> list:
+    """Robustly extract a JSON array from text that may have leading/trailing prose."""
+    text = text.strip()
+    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
+    text = text.strip()
+    # Try full text
     try:
-        parts = response.candidates[0].content.parts
-        text_parts = [
-            p.text for p in parts
-            if hasattr(p, 'text') and p.text and not getattr(p, 'thought', False)
-        ]
-        if text_parts:
-            return '\n'.join(text_parts)
-    except (IndexError, AttributeError):
+        result = json.loads(text)
+        if isinstance(result, list):
+            return result
+        if isinstance(result, dict):
+            for v in result.values():
+                if isinstance(v, list):
+                    return v
+    except json.JSONDecodeError:
         pass
-    return getattr(response, 'text', '') or ''
+    # Find first [ ... last ] and parse that slice (handles trailing prose)
+    start = text.find('[')
+    end = text.rfind(']')
+    if start != -1 and end > start:
+        try:
+            result = json.loads(text[start:end + 1])
+            if isinstance(result, list):
+                return result
+        except json.JSONDecodeError:
+            pass
+    log(f"  [{label}] Parse failed — tail: {text[-200:]!r}")
+    return []
 
 def extract_json(text: str, label="") -> dict:
     text = text.strip()
@@ -157,21 +232,10 @@ Contact: {contact_name}, {contact_title}
 Return only the JSON. No markdown, no explanation.
 """
     t0 = time.time()
-    log(f"  Calling Gemini...")
-    response = _gemini_call(
-        lambda: client.models.generate_content(
-            model=RESEARCH_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                max_output_tokens=4096,
-            )
-        ),
-        label="research"
-    )
+    text = _llm_complete(prompt, use_search=True, label="research", max_tokens=4096)
     log(f"  Responded in {time.time() - t0:.1f}s")
 
-    profile = extract_json(get_response_text(response), label="research")
+    profile = extract_json(text, label="research")
 
     if not profile:
         log(f"  Using fallback profile")
@@ -237,20 +301,9 @@ Return JSON with exactly these two keys:
 {{"email_subject": "under 60 chars, district-specific", "email_body": "150-200 word email, sign off as: The Flint Team | flintk12.com"}}"""
 
     t0 = time.time()
-    response = _gemini_call(
-        lambda: client.models.generate_content(
-            model=GENERATE_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_EMAIL_SYSTEM,
-                max_output_tokens=2048,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            )
-        ),
-        label="email"
-    )
+    text = _llm_complete(prompt, system=_EMAIL_SYSTEM, label="email", max_tokens=2048)
     log(f"  [Email] Done in {time.time() - t0:.1f}s")
-    return extract_json(get_response_text(response), label="email")
+    return extract_json(text, label="email")
 
 def _generate_one_pager(profile: dict, contact_name: str, contact_title: str) -> dict:
     log(f"  [One-Pager] Generating...")
@@ -270,20 +323,9 @@ Return JSON with exactly this key:
 {{"one_pager_bullets": {{"what_flint_is": "2 sentences tailored to this district", "student_data_privacy": "compliance statement citing {profile.get('state_privacy_law', 'FERPA')}", "compliance_credentials": ["FERPA compliant", "COPPA compliant", "SOC 2 Type II certified", "Does not train AI on student data", "one district-specific item"], "comparable_proof_point": "1-2 sentences about a comparable school or district", "pricing": "Free up to 80 users. District licensing from $1.08/user/month. Free trial available.", "next_step": "specific CTA for this district"}}}}"""
 
     t0 = time.time()
-    response = _gemini_call(
-        lambda: client.models.generate_content(
-            model=GENERATE_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_ONE_PAGER_SYSTEM,
-                max_output_tokens=1024,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            )
-        ),
-        label="one-pager"
-    )
+    text = _llm_complete(prompt, system=_ONE_PAGER_SYSTEM, label="one-pager", max_tokens=1024)
     log(f"  [One-Pager] Done in {time.time() - t0:.1f}s")
-    return extract_json(get_response_text(response), label="one-pager")
+    return extract_json(text, label="one-pager")
 
 def _generate_demo_activity(profile: dict) -> dict:
     log(f"  [Demo] Generating...")
@@ -320,20 +362,9 @@ Return JSON with exactly this key:
 }}}}"""
 
     t0 = time.time()
-    response = _gemini_call(
-        lambda: client.models.generate_content(
-            model=GENERATE_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=_DEMO_SYSTEM,
-                max_output_tokens=4096,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            )
-        ),
-        label="demo"
-    )
+    text = _llm_complete(prompt, system=_DEMO_SYSTEM, label="demo", max_tokens=4096)
     log(f"  [Demo] Done in {time.time() - t0:.1f}s")
-    return extract_json(get_response_text(response), label="demo")
+    return extract_json(text, label="demo")
 
 def generate_outreach_package(profile: dict, contact_name: str, contact_title: str) -> dict:
     log(f"Phase 2 — Generate (3 focused calls): {contact_name} at {profile.get('district_name', '?')}")
@@ -379,15 +410,17 @@ def _get_region(state_abbr: str) -> str:
 def _discover_people(scope: str) -> list:
     """Single focused call: find real administrators at large K-12 districts."""
     log(f"  [People] Searching for administrators in {scope}...")
+    count = 4 if USE_OLLAMA else 8
+    photo_field = "" if USE_OLLAMA else '\n    "photo_url": "direct URL to a publicly accessible headshot or profile photo of this person (from district website, state education dept, or news source), or null if not found",'
     prompt = f"""You are a JSON API. Respond with ONLY a JSON array. No prose, no markdown, no explanation.
 First character must be [ and last character must be ].
 
-Find the current superintendents, chief academic officers, and curriculum/technology directors at the 8 largest public K-12 school districts in {scope}.
-Use Google Search to verify current names and titles. Include districts of varying sizes — large urban and mid-size suburban.
+Find the current superintendents, chief academic officers, and curriculum/technology directors at the {count} largest public K-12 school districts in {scope}.
+{"Use Google Search to verify current names and titles. " if not USE_OLLAMA else ""}Include districts of varying sizes — large urban and mid-size suburban.
 
 Return a JSON array where every element has exactly these fields:
 [
-  {{
+  {{{photo_field}
     "name": "full name of current administrator",
     "title": "their exact current title",
     "district": "full official district name",
@@ -397,54 +430,21 @@ Return a JSON array where every element has exactly these fields:
     "title_one": true or false,
     "ell_percentage": "X%" or null,
     "ai_policy_status": "ban" or "cautious" or "neutral" or "supportive" or "unknown",
-    "why_target": "one sentence: specific reason an AI tutoring platform fits this district",
-    "photo_url": "direct URL to a publicly accessible headshot or profile photo of this person (from district website, state education dept, or news source), or null if not found"
+    "why_target": "one sentence: specific reason an AI tutoring platform fits this district"
   }}
 ]
 
 IMPORTANT: Return ONLY the JSON array. Start your response with [ and end with ].
 """
     t0 = time.time()
-    response = _gemini_call(
-        lambda: client.models.generate_content(
-            model=RESEARCH_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                max_output_tokens=4096,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            )
-        ),
-        label="people"
-    )
+    people_tokens = 6000 if USE_OLLAMA else 4096
+    text = _llm_complete(prompt, use_search=not USE_OLLAMA, label="people", max_tokens=people_tokens)
     elapsed = time.time() - t0
-    text = get_response_text(response)
     log(f"  [People] Responded in {elapsed:.1f}s — preview: {text[:80]!r}")
 
-    # Try to extract JSON array
-    text = text.strip()
-    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
-    text = text.strip()
-    try:
-        result = json.loads(text)
-        if isinstance(result, list):
-            log(f"  [People] Found {len(result)} people")
-            return result
-        if isinstance(result, dict) and "people" in result:
-            return result["people"]
-    except json.JSONDecodeError:
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-        if match:
-            try:
-                result = json.loads(match.group())
-                if isinstance(result, list):
-                    log(f"  [People] Extracted {len(result)} people from response")
-                    return result
-            except json.JSONDecodeError:
-                pass
-    log(f"  [People] Parse failed — no valid JSON array found")
-    return []
+    result = _extract_json_array(text, label="People")
+    log(f"  [People] Found {len(result)} people")
+    return result
 
 def _discover_conferences(scope: str) -> list:
     """Single focused call: find real upcoming K-12 education conferences."""
@@ -469,45 +469,13 @@ Return a JSON array where every element has exactly these fields:
 IMPORTANT: Return ONLY the JSON array. Start with [ and end with ].
 """
     t0 = time.time()
-    response = _gemini_call(
-        lambda: client.models.generate_content(
-            model=RESEARCH_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                max_output_tokens=2048,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            )
-        ),
-        label="conferences"
-    )
+    text = _llm_complete(prompt, use_search=not USE_OLLAMA, label="conferences", max_tokens=2048)
     elapsed = time.time() - t0
-    text = get_response_text(response)
     log(f"  [Conferences] Responded in {elapsed:.1f}s — preview: {text[:80]!r}")
 
-    text = text.strip()
-    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
-    text = text.strip()
-    try:
-        result = json.loads(text)
-        if isinstance(result, list):
-            log(f"  [Conferences] Found {len(result)} conferences")
-            return result
-        if isinstance(result, dict) and "conferences" in result:
-            return result["conferences"]
-    except json.JSONDecodeError:
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-        if match:
-            try:
-                result = json.loads(match.group())
-                if isinstance(result, list):
-                    log(f"  [Conferences] Extracted {len(result)} conferences from response")
-                    return result
-            except json.JSONDecodeError:
-                pass
-    log(f"  [Conferences] Parse failed — will use seed conferences only")
-    return []
+    result = _extract_json_array(text, label="Conferences")
+    log(f"  [Conferences] Found {len(result)} conferences")
+    return result
 
 # ---------------------------------------------------------------------------
 # Discovery: find conferences + administrators for a state/city
@@ -519,6 +487,7 @@ def discover_targets(state: str, city: str = None) -> dict:
     log(f"=== Discovery: {scope} ({state_abbr}) ===")
 
     people = _discover_people(scope)
+    time.sleep(2)  # avoid back-to-back calls hitting RPM cap
     conferences = _discover_conferences(scope)
 
     # Seed with known conferences so the list is never empty
