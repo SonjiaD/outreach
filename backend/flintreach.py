@@ -397,7 +397,8 @@ Return a JSON array where every element has exactly these fields:
     "title_one": true or false,
     "ell_percentage": "X%" or null,
     "ai_policy_status": "ban" or "cautious" or "neutral" or "supportive" or "unknown",
-    "why_target": "one sentence: specific reason an AI tutoring platform fits this district"
+    "why_target": "one sentence: specific reason an AI tutoring platform fits this district",
+    "photo_url": "direct URL to a publicly accessible headshot or profile photo of this person (from district website, state education dept, or news source), or null if not found"
   }}
 ]
 
@@ -570,6 +571,6 @@ def generate_email_for_person(person: dict) -> dict:
     email = _generate_email(profile, person.get("name", ""), person.get("title", ""))
     demo = _generate_demo_activity(profile)
 
-    result = {**email, "demo_activity": demo}
+    result = {**email, "demo_activity": demo.get("demo_activity", demo)}
     log(f"  Done — subject: \"{result.get('email_subject', '?')}\"")
     return result
